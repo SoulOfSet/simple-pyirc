@@ -2,8 +2,8 @@
 
 # Variables
 PYTHON=python3
-PYTEST=pytest
-
+PYTEST=pytest tests/
+ 
 # Run the client application
 start-client:
 	@echo "Starting client..."
