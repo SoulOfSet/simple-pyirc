@@ -14,6 +14,7 @@ class IRCClient:
         self.userinfo = userinfo
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.connected = False
+        self.channels = set()
 
     def connect(self) -> bool:
         """
@@ -105,3 +106,40 @@ class IRCClient:
             print(f"Failed to update nickname: {e}")
             return False
 
+    def join_channel(self, channel: str) -> bool:
+        """
+        Joins a specific channel.
+
+        :param channel: The channel name to join.
+        :return: True if the channel join attempt was made, False otherwise.
+        """
+        if not self.connected:
+            print("You must be connected to join a channel.")
+            return False
+        try:
+            self.socket.sendall(f"JOIN {channel}\n".encode())
+            self.channels.add(channel)  # Add to the internal set of channels
+            print(f"Attempted to join channel: {channel}")
+            return True
+        except Exception as e:
+            print(f"Failed to join channel {channel}: {e}")
+            return False
+
+    def leave_channel(self, channel: str) -> bool:
+        """
+        Leaves a specific channel.
+
+        :param channel: The channel name to leave.
+        :return: True if the channel leave attempt was made, False otherwise.
+        """
+        if not self.connected:
+            print("You must be connected to leave a channel.")
+            return False
+        try:
+            self.socket.sendall(f"PART {channel}\n".encode())
+            self.channels.discard(channel)  # Remove from the internal set of channels
+            print(f"Attempted to leave channel: {channel}")
+            return True
+        except Exception as e:
+            print(f"Failed to leave channel {channel}: {e}")
+            return False

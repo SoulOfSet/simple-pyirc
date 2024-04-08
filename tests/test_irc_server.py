@@ -7,6 +7,7 @@ from irc_client import IRCClient
 irc_server = DockerContainer("inspircd/inspircd-docker")
 userinfo = "Test User for IRC"
 
+
 @pytest.fixture(scope="module", autouse=True)
 def setup():
     irc_server.with_exposed_ports(6667).start()
@@ -36,7 +37,8 @@ def test_irc_client_connection():
     """
     host = irc_server.get_container_host_ip()  # Get the IRC server's host IP from the Docker container
     port = irc_server.get_exposed_port(6667)  # Get the exposed port from the Docker container
-    client = IRCClient(host=host, port=int(port), userinfo=userinfo)  # Initialize the IRCClient with the server's host and port
+    client = IRCClient(host=host, port=int(port),
+                       userinfo=userinfo)  # Initialize the IRCClient with the server's host and port
 
     # Assert that the client can connect to the IRC server
     assert client.connect(), "Client failed to connect to the IRC server."
@@ -98,4 +100,68 @@ def test_irc_client_registration_and_nickname_change():
     assert client.nickname == new_nickname, "The client's nickname was not updated correctly."
 
     # Disconnect the client from the server
+    client.disconnect()
+
+
+def test_irc_client_join_channel():
+    """
+    Tests the IRCClient's ability to join a channel on an IRC server.
+
+    This test ensures that the IRCClient class can join a channel after establishing a connection with an IRC server.
+    It verifies that the channel join attempt is made and that the internal state of the client is updated to reflect
+    the joined channel.
+
+    The test uses a Docker container running an IRC server to simulate a real-world IRC environment. This isolated
+    environment allows for a controlled test of the IRCClient's channel joining functionality.
+
+    Assertions:
+    1. The client can connect to the IRC server.
+    2. The client can successfully join a channel.
+    3. The client's internal state is updated to include the joined channel.
+
+    If any of these operations fail, the test will fail, indicating issues with the IRCClient's implementation of
+    channel joining or state management.
+    """
+    host = irc_server.get_container_host_ip()
+    port = irc_server.get_exposed_port(6667)
+    client = IRCClient(host=host, port=int(port), userinfo=userinfo)
+
+    assert client.connect(), "Client failed to connect to the IRC server."
+    channel_name = "#testChannel"
+    assert client.join_channel(channel_name), "Client failed to join the channel."
+    assert channel_name in client.channels, "Channel was not added to the client's internal state."
+
+    client.disconnect()
+
+
+def test_irc_client_leave_channel():
+    """
+    Tests the IRCClient's ability to leave a channel on an IRC server.
+
+    After joining a channel, this test ensures that the IRCClient can leave the channel and updates its internal
+    state to reflect the channel has been left. It verifies the channel leave attempt is made and the client no
+    longer tracks the channel as joined.
+
+    The test uses a Docker container running an IRC server to simulate a real-world IRC environment, allowing for
+    a controlled test of the IRCClient's channel leaving functionality.
+
+    Assertions:
+    1. The client can connect to the IRC server.
+    2. The client can successfully leave a channel it had joined.
+    3. The client's internal state is updated to remove the left channel.
+
+    If any of these operations fail, the test will fail, indicating issues with the IRCClient's implementation of
+    channel leaving or state management.
+    """
+    host = irc_server.get_container_host_ip()
+    port = irc_server.get_exposed_port(6667)
+    client = IRCClient(host=host, port=int(port), userinfo=userinfo)
+
+    assert client.connect(), "Client failed to connect to the IRC server."
+    channel_name = "#testChannel"
+    # Ensure the client is part of the channel before attempting to leave
+    client.join_channel(channel_name)
+    assert client.leave_channel(channel_name), "Client failed to leave the channel."
+    assert channel_name not in client.channels, "Channel was not removed from the client's internal state."
+
     client.disconnect()
