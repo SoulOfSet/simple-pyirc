@@ -1,5 +1,6 @@
 import pytest
 from testcontainers.core.container import DockerContainer
+from testcontainers.core.waiting_utils import wait_for_logs
 
 from irc_client import IRCClient
 
@@ -9,6 +10,7 @@ irc_server = DockerContainer("inspircd/inspircd-docker")
 @pytest.fixture(scope="module", autouse=True)
 def setup():
     irc_server.with_exposed_ports(6667).start()
+    wait_for_logs(irc_server, "InspIRCd is now running as", timeout=30)  # Adjust the message accordingly
     yield
     irc_server.stop()
 
