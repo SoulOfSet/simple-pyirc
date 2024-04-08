@@ -22,3 +22,4 @@ jobs:
 
     - name: Run unit tests
       run: make test
+      working-directory: /home/runner/work/simple-pyirc/simple-pyirc
