@@ -1,6 +1,7 @@
 import pytest
 from testcontainers.core.container import DockerContainer
-from client import IRCClient
+
+from ircclient import IRCClient
 
 irc_server = DockerContainer("inspircd/inspircd-docker")
 

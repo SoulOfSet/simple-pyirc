@@ -1,5 +1,4 @@
-from client import IRCClient  # Make sure this matches the name of your IRC client file
-
+from ircclient import IRCClient
 
 def main():
     # Test code. Will eventually be replaced
