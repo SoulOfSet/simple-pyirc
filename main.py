@@ -1,4 +1,4 @@
-from ircclient import IRCClient
+from irc_client import IRCClient
 
 def main():
     # Test code. Will eventually be replaced
