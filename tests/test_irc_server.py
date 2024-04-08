@@ -5,13 +5,13 @@ from testcontainers.core.waiting_utils import wait_for_logs
 from irc_client import IRCClient
 
 irc_server = DockerContainer("inspircd/inspircd-docker")
-
+userinfo = "Test User for IRC"
 
 @pytest.fixture(scope="module", autouse=True)
 def setup():
     irc_server.with_exposed_ports(6667).start()
     wait_for_logs(irc_server, "InspIRCd is now running as", timeout=30)  # Adjust the message accordingly
-    yield
+    yield irc_server
     irc_server.stop()
 
 
@@ -36,13 +36,66 @@ def test_irc_client_connection():
     """
     host = irc_server.get_container_host_ip()  # Get the IRC server's host IP from the Docker container
     port = irc_server.get_exposed_port(6667)  # Get the exposed port from the Docker container
-    client = IRCClient(host=host, port=int(port))  # Initialize the IRCClient with the server's host and port
+    client = IRCClient(host=host, port=int(port), userinfo=userinfo)  # Initialize the IRCClient with the server's host and port
 
     # Assert that the client can connect to the IRC server
     assert client.connect(), "Client failed to connect to the IRC server."
 
     # Assert that the client can send a ping command and receive a response
     assert client.send_ping(), "Client failed to send PING to the IRC server."
+
+    # Disconnect the client from the server
+    client.disconnect()
+
+
+def test_irc_client_registration_and_nickname_change():
+    """
+    Tests the IRCClient's ability to register a user with a nickname and user info on an IRC server,
+    and then update the user's nickname after registration.
+
+    This test ensures that the IRCClient class can not only establish a connection with an IRC server but also
+    successfully register a user with initial nickname and user info. It further verifies the client's ability
+    to update the user's nickname post-registration, as per IRC protocol specifications.
+
+    The test uses a Docker container running an IRC server to simulate a real-world IRC environment. This isolated
+    environment allows for a controlled test of the IRCClient's registration and nickname updating functionalities.
+
+    Workflow:
+    1. Connects to the IRC server running within a Docker container.
+    2. Registers a user with an initial nickname and user info.
+    3. Updates the user's nickname to a new value.
+    4. Verifies that the nickname was successfully updated.
+
+    Assertions:
+    1. The client can connect to the IRC server.
+    2. The client can register with the IRC server using the initial nickname and user info.
+    3. The client can successfully update the nickname after registration.
+    4. The updated nickname is correctly reflected within the client.
+
+    If any of these operations fail, the test will indicate an issue with the IRCClient's implementation of
+    the registration process or its ability to handle nickname updates as per IRC protocol.
+
+    Note: This test assumes the IRC server responds appropriately to NICK and USER commands as per standard
+    IRC protocol behavior. Adjustments may be needed based on the specific IRC server's implementation details.
+    """
+    host = irc_server.get_container_host_ip()
+    port = irc_server.get_exposed_port(6667)
+
+    client = IRCClient(host=host, port=int(port), userinfo=userinfo)
+
+    # Connect to the IRC server
+    assert client.connect(), "Client failed to connect to the IRC server."
+
+    # Initial registration with a nickname
+    initial_nickname = "testUser"
+    assert client.register(initial_nickname), "Client failed to register with the IRC server."
+
+    # Change the nickname
+    new_nickname = "newTestUser"
+    assert client.set_nickname(new_nickname), "Client failed to update the nickname."
+
+    # Optionally, you can verify that the new nickname has been set correctly
+    assert client.nickname == new_nickname, "The client's nickname was not updated correctly."
 
     # Disconnect the client from the server
     client.disconnect()
