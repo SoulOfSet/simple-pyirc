@@ -7,7 +7,7 @@ PYTEST=pytest tests/
 # Run the client application
 start-client:
 	@echo "Starting client..."
-	@$(PYTHON) client.py
+	@$(PYTHON) main.py
 
 # Run the unit test suite with pytest
 test:
