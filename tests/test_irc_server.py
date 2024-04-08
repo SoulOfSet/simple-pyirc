@@ -5,7 +5,7 @@ from testcontainers.core.waiting_utils import wait_for_logs
 from irc_client import IRCClient
 
 irc_server = DockerContainer("inspircd/inspircd-docker")
-
+userinfo = "Test User for IRC"
 
 @pytest.fixture(scope="module", autouse=True)
 def setup():
@@ -36,7 +36,7 @@ def test_irc_client_connection():
     """
     host = irc_server.get_container_host_ip()  # Get the IRC server's host IP from the Docker container
     port = irc_server.get_exposed_port(6667)  # Get the exposed port from the Docker container
-    client = IRCClient(host=host, port=int(port))  # Initialize the IRCClient with the server's host and port
+    client = IRCClient(host=host, port=int(port), userinfo=userinfo)  # Initialize the IRCClient with the server's host and port
 
     # Assert that the client can connect to the IRC server
     assert client.connect(), "Client failed to connect to the IRC server."
@@ -80,7 +80,6 @@ def test_irc_client_registration_and_nickname_change():
     """
     host = irc_server.get_container_host_ip()
     port = irc_server.get_exposed_port(6667)
-    userinfo = "Test User for IRC"
 
     client = IRCClient(host=host, port=int(port), userinfo=userinfo)
 
