@@ -20,8 +20,5 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run client application
-      run: make start-client
-
     - name: Run unit tests
       run: make test
