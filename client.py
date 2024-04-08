@@ -1,5 +1,6 @@
 import socket
 
+
 class IRCClient:
     """
     A simple IRC Client class for connecting to an IRC server, sending a ping,
