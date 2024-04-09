@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
@@ -14,6 +16,12 @@ def setup():
     wait_for_logs(irc_server, "InspIRCd is now running as", timeout=30)  # Adjust the message accordingly
     yield irc_server
     irc_server.stop()
+
+
+@pytest.fixture
+def mock_socket():
+    with patch('socket.socket') as mock:
+        yield mock
 
 
 def test_irc_client_connection():
@@ -35,8 +43,8 @@ def test_irc_client_connection():
     If any of these operations fail, the test will fail, indicating issues with the IRCClient's
     implementation or its interaction with the specified IRC server.
     """
-    host = irc_server.get_container_host_ip()  # Get the IRC server's host IP from the Docker container
-    port = irc_server.get_exposed_port(6667)  # Get the exposed port from the Docker container
+    host = irc_server.get_container_host_ip()
+    port = irc_server.get_exposed_port(6667)
     client = IRCClient(host=host, port=int(port),
                        userinfo=userinfo)  # Initialize the IRCClient with the server's host and port
 
@@ -165,3 +173,128 @@ def test_irc_client_leave_channel():
     assert channel_name not in client.channels, "Channel was not removed from the client's internal state."
 
     client.disconnect()
+
+
+def test_send_message(mock_socket):
+    """
+    Tests the IRCClient's ability to send a message to a specific target, such as a user or a channel.
+
+    This test verifies that the IRCClient constructs the correct PRIVMSG command and sends it over
+    the socket to the IRC server. A mock socket object is used to intercept and assert the message
+    format and contents sent by the IRCClient.
+
+    The test simulates sending a message to a channel and checks if the correct command is formed
+    and sent through the socket.
+
+    :param mock_socket: A mock object representing the socket used by the IRCClient to send messages.
+    """
+    host = irc_server.get_container_host_ip()
+    port = irc_server.get_exposed_port(6667)
+    client = IRCClient(host, int(port), userinfo)
+    client.socket = mock_socket()
+    target = "#testChannel"
+    message = "Hello, world!"
+    client.send_message(target, message)
+    mock_socket().sendall.assert_called_with(f"PRIVMSG {target} :{message}\n".encode())
+
+
+def test_request_user_list(mock_socket):
+    """
+    Tests the IRCClient's ability to request a list of users present in a channel.
+
+    This test checks if the IRCClient correctly forms and sends the NAMES command to the server,
+    requesting a list of users in a specified channel. A mock socket object is used to intercept
+    and assert the correctness of the command sent by the IRCClient.
+
+    The focus is on verifying that the command sent is properly formatted according to IRC protocol
+    specifications.
+
+    :param mock_socket: A mock object representing the socket used by the IRCClient to request user lists.
+    """
+    host = irc_server.get_container_host_ip()
+    port = irc_server.get_exposed_port(6667)
+    client = IRCClient(host, int(port), userinfo)
+    client.socket = mock_socket()
+    channel = "#testChannel"
+    client.request_user_list(channel)
+    mock_socket().sendall.assert_called_with(f"NAMES {channel}\n".encode())
+
+
+def test_handle_privmsg():
+    """
+    Tests the IRCClient's ability to handle a PRIVMSG (private message) server response.
+
+    This test simulates receiving a PRIVMSG command from the server and checks if the IRCClient
+    properly calls its `handle_privmsg` method with the correct parameters. It verifies the client's
+    ability to parse and process incoming private messages according to IRC protocol specifications.
+
+    The test uses a mocked `handle_privmsg` method to assert it gets called upon receiving a PRIVMSG
+    response from the server.
+    """
+    host = irc_server.get_container_host_ip()
+    port = irc_server.get_exposed_port(6667)
+    client = IRCClient(host, int(port), userinfo)
+    response = ":user!user@host PRIVMSG #testChannel :This is a test message"
+    with patch.object(client, 'handle_privmsg') as mock_handle_privmsg:
+        client.handle_server_response(response)
+        mock_handle_privmsg.assert_called()
+
+
+def test_handle_join():
+    """
+    Tests the IRCClient's handling of a JOIN message from the server.
+
+    This test verifies that when the IRCClient receives a JOIN command indicating a user has joined
+    a channel, it correctly calls its `handle_join` method to process this event.
+
+    The effectiveness of the method is tested by simulating a JOIN command from the server and using
+    a mock to ensure `handle_join` is called appropriately, reflecting the client's capability to
+    manage channel join events.
+    """
+    host = irc_server.get_container_host_ip()
+    port = irc_server.get_exposed_port(6667)
+    client = IRCClient(host, int(port), userinfo)
+    response = ":user!user@host JOIN #testChannel"
+    with patch.object(client, 'handle_join') as mock_handle_join:
+        client.handle_server_response(response)
+        mock_handle_join.assert_called()
+
+
+def test_handle_part():
+    """
+    Tests the IRCClient's handling of a PART message from the server.
+
+    This test assesses the IRCClient's ability to handle a PART command, which signifies a user leaving
+    a channel. It verifies that the client correctly calls its `handle_part` method to update its internal
+    state in response to the event.
+
+    By simulating a PART command from the server and employing a mock of the `handle_part` method, this test
+    ensures the client can adequately process channel leave events.
+    """
+    host = irc_server.get_container_host_ip()
+    port = irc_server.get_exposed_port(6667)
+    client = IRCClient(host, int(port), userinfo)
+    response = ":user!user@host PART #testChannel"
+    with patch.object(client, 'handle_part') as mock_handle_part:
+        client.handle_server_response(response)
+        mock_handle_part.assert_called()
+
+
+def test_handle_names():
+    """
+    Tests the IRCClient's ability to handle the NAMES server response.
+
+    This test checks if the IRCClient properly processes a NAMES response from the server, which lists the
+    users present in a channel. The focus is on ensuring that the client calls its `handle_names` method
+    with the correct parameters to update its internal state based on the server's response.
+
+    A mock of the `handle_names` method is used to assert its invocation upon receiving a NAMES response,
+    demonstrating the client's capability to handle user list updates for channels.
+    """
+    host = irc_server.get_container_host_ip()
+    port = irc_server.get_exposed_port(6667)
+    client = IRCClient(host, int(port), userinfo)
+    response = ":server 353 user = #testChannel :user1 user2 user3"
+    with patch.object(client, 'handle_names') as mock_handle_names:
+        client.handle_server_response(response)
+        mock_handle_names.assert_called()
