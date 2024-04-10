@@ -1,13 +1,26 @@
+import argparse
 from time import sleep
 
 import urwid
 
 from irc_client import IRCClient
 
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Simple IRC Client')
+    parser.add_argument('--host', required=True, help='IRC server hostname')
+    parser.add_argument('--port', type=int, required=True, help='IRC server port')
+    parser.add_argument('--userinfo', required=True, help='User info for IRC registration')
+    parser.add_argument('--nickname', required=True, help='Nickname for the IRC session')
+    parser.add_argument('--default-channel', required=True, help='Default channel to join')
+    return parser.parse_args()
+
+
 # Global lists for demo purposes. In a real application, these would be dynamically updated.
-channels = ['#general']
+channels = []
 users = []
 current_channel = '#general'
+
 
 class MessageEdit(urwid.Edit):
     def __init__(self, irc_client, chat_body, user_box, channel_list_widget, *args, **kwargs):
@@ -16,6 +29,7 @@ class MessageEdit(urwid.Edit):
         self.chat_body = chat_body
         self.user_box = user_box
         self.channel_list_widget = channel_list_widget
+        self.channel_widgets = {}
 
     def keypress(self, size, key):
         if key == 'enter':
@@ -25,13 +39,17 @@ class MessageEdit(urwid.Edit):
                 # Validate the channel name
                 if not self.is_valid_channel_name(channel):
                     self.chat_body.body.append(urwid.Text(f"Invalid channel name: {channel}"))
+                elif channel in self.irc_client.channels:
+                    self.switch_channel(channel)  # Switch to the channel if it already exists
                 elif self.irc_client.join_channel(channel):
-                    global current_channel
-                    current_channel = channel
-                    self.chat_body.body.clear()
-                    self.chat_body.body.append(urwid.Text(f"Joined {channel}"))
-                    self.irc_client.request_user_list(channel)
-                    self.channel_list_widget.append(urwid.AttrMap(urwid.Text(channel), 'channel'))
+                    self.update_current_channel(channel)
+                self.set_edit_text('')
+            elif message.startswith("/switch "):
+                channel = message.split("/switch ", 1)[1]
+                if channel in self.irc_client.channels:
+                    self.switch_channel(channel)
+                else:
+                    self.chat_body.body.append(urwid.Text(f"Not in channel: {channel}"))
                 self.set_edit_text('')
             elif message:
                 self.irc_client.send_message(current_channel, message)
@@ -44,6 +62,34 @@ class MessageEdit(urwid.Edit):
         """Validates IRC channel names. Must start with #, not contain spaces, and be 1-50 characters long."""
         return channel_name.startswith('#') and ' ' not in channel_name and 1 < len(channel_name) <= 50
 
+    def update_current_channel(self, channel):
+        global current_channel
+        current_channel = channel
+        self.chat_body.body.clear()
+        self.chat_body.body.append(urwid.Text(f"Joined {channel}"))
+        self.irc_client.request_user_list(channel)
+        if channel not in self.channel_widgets:
+            channel_widget = urwid.AttrMap(urwid.Text(channel), 'channel', 'current_channel')
+            self.channel_widgets[channel] = channel_widget
+            self.channel_list_widget.append(channel_widget)
+        self.highlight_current_channel(channel)
+
+    def switch_channel(self, channel):
+        global current_channel
+        current_channel = channel
+        self.chat_body.body.clear()
+        self.chat_body.body.append(urwid.Text(f"Switched to {channel}"))
+        self.irc_client.request_user_list(channel)
+        self.highlight_current_channel(channel)
+
+    def highlight_current_channel(self, channel):
+        # Reset all channels to default look
+        for chan, widget in self.channel_widgets.items():
+            widget.set_attr_map({None: 'channel'})
+        # Highlight the current channel
+        if channel in self.channel_widgets:
+            self.channel_widgets[channel].set_attr_map({None: 'current_channel'})
+
 
 class SafeFrame(urwid.Frame):
     def mouse_event(self, size, event, button, col, row, focus):
@@ -51,6 +97,7 @@ class SafeFrame(urwid.Frame):
             return super().mouse_event(size, event, button, col, row, focus)
         # Else, ignore mouse events in the footer area
         return False
+
 
 def update_chat_body(sender, channel_or_user, message, chat_body, loop):
     chat_body.body.append(urwid.Text(f"{sender}: {message}"))
@@ -71,19 +118,15 @@ def update_user_list(channel, user_box, loop, irc_client):
         loop.draw_screen()  # Ensure the UI is updated
 
 
-
-def on_send_button_pressed(irc_client, message_edit, chat_body, button):
-    message = message_edit.get_edit_text().strip()
-    if message:
-        irc_client.send_message(current_channel, message)
-        chat_body.body.append(urwid.Text((f"You: {message}")))
-        message_edit.set_edit_text('')
-
-
-def setup_ui(irc_client):
-    palette = [('header', 'light cyan,bold', 'black'), ('chat', 'white', 'black'),
-               ('footer', 'light gray', 'black'), ('channel', 'dark cyan', 'black'),
-               ('user', 'dark green', 'black'), ]
+def setup_ui(irc_client, default_channel):
+    palette = [
+        ('header', 'light cyan,bold', 'black'),
+        ('chat', 'white', 'black'),
+        ('footer', 'light gray', 'black'),
+        ('channel', 'dark cyan', 'black'),
+        ('user', 'dark green', 'black'),
+        ('current_channel', 'white', 'dark blue'),  # New attribute for highlighting the current channel
+    ]
     header = urwid.AttrMap(urwid.Text("IRC Client", align='center'), 'header')
     chat_body = urwid.ListBox(urwid.SimpleFocusListWalker([urwid.Text("Simple PyIRC")]))
     chat_view = urwid.BoxAdapter(SafeFrame(body=chat_body), height=20)
@@ -95,14 +138,16 @@ def setup_ui(irc_client):
     user_list = urwid.ListBox(urwid.SimpleFocusListWalker([urwid.AttrMap(urwid.Text(user), 'user') for user in users]))
     user_box = urwid.LineBox(user_list, title='Users')
 
-    # Pass user_box and channel_list_widget to MessageEdit
+    # Initialize message_edit with irc_client, chat_body, user_box, and channel_list_widget
     message_edit = MessageEdit(irc_client, chat_body, user_box, channel_list_widget, "Message: ")
 
-    send_button = urwid.Button("Send")
-    urwid.connect_signal(send_button, 'click', on_send_button_pressed,
-                         user_args=[irc_client, message_edit, chat_body])
+    # Initialize the channel_widgets dictionary for the initial channel
+    initial_channel_widget = urwid.AttrMap(urwid.Text(default_channel), 'channel', 'current_channel')
+    message_edit.channel_widgets[default_channel] = initial_channel_widget
+    channel_list_widget.append(initial_channel_widget)
 
-    footer = urwid.AttrMap(urwid.Columns([message_edit, send_button]), 'footer')
+
+    footer = urwid.AttrMap(urwid.Columns([message_edit]), 'footer')
 
     columns = urwid.Columns([
         ('weight', 1, channel_box),
@@ -120,14 +165,21 @@ def setup_ui(irc_client):
 
     return loop
 
-if __name__ == "__main__":
-    irc_client = IRCClient("localhost", 32855, "Test User")
-    if irc_client.connect():
-        irc_client.register("TestUser")
-        sleep(1)
-        irc_client.join_channel("#general")
-        sleep(1)
-        loop = setup_ui(irc_client)
-        irc_client.request_user_list("#general")
-        loop.run()
 
+if __name__ == "__main__":
+    args = parse_arguments()
+
+    # Use args to get command-line arguments
+    irc_client = IRCClient(args.host, args.port, args.userinfo)
+    current_channel = args.default_channel  # Set the global current_channel to the command-line argument
+
+    if irc_client.connect():
+        irc_client.register(args.nickname)
+        sleep(2)
+        irc_client.join_channel(current_channel)
+        sleep(2)
+        loop = setup_ui(irc_client, current_channel)
+        message_edit = loop.widget.footer.original_widget[0]
+        message_edit.highlight_current_channel(current_channel)
+        irc_client.request_user_list(current_channel)
+        loop.run()

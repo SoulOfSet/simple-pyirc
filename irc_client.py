@@ -5,7 +5,7 @@ import threading
 from time import sleep
 from typing import Callable
 
-logging.basicConfig(filename='example.log',
+logging.basicConfig(filename='irc.log',
                     level=logging.DEBUG,
                     filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -194,6 +194,7 @@ class IRCClient:
             except Exception as e:
                 logger.info(f"Error listening to server: {e}")
                 self.connected = False
+                raise e
 
     def handle_server_response(self, response):
         """
