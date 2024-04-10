@@ -41,6 +41,7 @@ class IRCClient:
         self.channel_users = {}
         self.message_event = EventPublisher()
         self.user_event = EventPublisher()
+        self.names_event = EventPublisher()
 
     def connect(self) -> bool:
         """
@@ -193,7 +194,6 @@ class IRCClient:
             except Exception as e:
                 logger.info(f"Error listening to server: {e}")
                 self.connected = False
-                raise e
 
     def handle_server_response(self, response):
         """
@@ -231,52 +231,66 @@ class IRCClient:
     def handle_join(self, response):
         """
         Handles a JOIN message from the server. This method extracts the user who joined and the channel
-        they joined, then updates the internal mapping of users to channels and prints a message indicating
-        the user has joined the channel.
-
-        The JOIN command is used in IRC for a user to start listening to the traffic from a specified channel.
+        they joined, updates the internal mapping of channel users, and publishes the join event.
 
         :param response: The raw response string from the server containing the JOIN command.
         """
         user = re.search(r":(\S+)!", response).group(1)
-        channel = re.search(r"JOIN (\S+)", response).group(1)
-        if user not in self.channel_users:
-            self.channel_users[user] = set()
-        self.channel_users[user].add(channel)
+        channel = re.search(r"JOIN (\S+)", response).group(1).replace(":", "")
+        if channel not in self.channel_users:
+            self.channel_users[channel] = set()
+        self.channel_users[channel].add(user)
         logger.info(f"{user} has joined {channel}")
         self.user_event.publish(user, channel, "joined")
 
     def handle_part(self, response):
         """
         Handles a PART message from the server. This method extracts the user who left and the channel
-        they left, then updates the internal mapping of users to channels and prints a message indicating
-        the user has left the channel.
-
-        The PART command is used in IRC for a user to leave a channel.
+        they left, updates the internal mapping of channel users, and publishes the part event.
 
         :param response: The raw response string from the server containing the PART command.
         """
         user = re.search(r":(\S+)!", response).group(1)
         channel = re.search(r"PART (\S+)", response).group(1)
-        if user in self.channel_users and channel in self.channel_users[user]:
-            self.channel_users[user].remove(channel)
+        if channel in self.channel_users and user in self.channel_users[channel]:
+            self.channel_users[channel].remove(user)
         logger.info(f"{user} has left {channel}")
         self.user_event.publish(user, channel, "left")
 
     def handle_names(self, response):
         """
         Handles the NAMES response from the server. This method extracts the channel name and the list of
-        nicknames in that channel, then updates the internal mapping of channels to users and prints the
-        list of users in the channel.
-
-        The NAMES command is used in IRC to list all visible nicknames that are part of a specified channel.
+        nicknames in that channel, then updates the internal mapping of channels to users.
 
         :param response: The raw response string from the server containing the NAMES list.
         """
-        channel = re.search(r"= (\S+)", response).group(1)
-        names = re.search(r":(.+)", response.split(":")[-1]).group(1).split()
-        self.channel_users[channel] = set(names)
-        logger.info(f"Users in {channel}: {', '.join(names)}")
+        if '353' in response and '366' in response:
+            # Find the start and end of the relevant part of the response
+            start_index = response.find('353')
+            end_index = response.find('366', start_index)
+
+            # Extract the part of the response that contains the names list
+            names_part = response[start_index:end_index]
+
+            # Extract the channel name and names list
+            parts = names_part.split()
+            channel_index = parts.index('353') + 3  # The channel name follows the '353' marker by 4 positions
+            channel = parts[channel_index]
+
+            # Extract names; they are after the channel name, delimited by ':'
+            names_start_index = names_part.find(':', names_part.find(channel)) + 1
+            names_end_index = names_part.find(':', names_start_index)
+            names = names_part[names_start_index:names_end_index].split()
+
+            if channel not in self.channel_users:
+                self.channel_users[channel] = set()
+
+            # Update the entire set to match the NAMES response
+            self.channel_users[channel] = set(names)
+
+            logger.info(f"Updated user list for {channel}: {', '.join(names)}")
+            # Publish names event to update UI components
+            self.names_event.publish(channel, names)
 
     def send_message(self, target, message):
         """
