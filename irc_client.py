@@ -11,6 +11,7 @@ logging.basicConfig(filename='irc.log',
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+
 class EventPublisher:
     def __init__(self):
         self.subscribers = []
@@ -218,16 +219,19 @@ class IRCClient:
         """
         Handles a PRIVMSG (Private Message) from the server. This method extracts the sender's nickname,
         the target (which can be a channel or a user), and the message content, then prints the message.
-
-        The PRIVMSG command is used in IRC to send private messages between users or to send messages to channels.
+        It differentiates between messages sent to a channel and private messages to the user.
 
         :param response: The raw response string from the server containing the PRIVMSG command.
         """
         sender = re.search(r":(\S+)!", response).group(1)
         channel_or_user = re.search(r"PRIVMSG (\S+)", response).group(1)
         message = re.search(r"PRIVMSG \S+ :(.+)", response).group(1)
-        logger.info(f"Message from {sender} in {channel_or_user}: {message}")
-        self.message_event.publish(sender, channel_or_user, message)
+        if channel_or_user.startswith('#'):
+            logger.info(f"Message from {sender} in {channel_or_user}: {message}")
+            self.message_event.publish(sender, channel_or_user, message)
+        else:
+            logger.info(f"Private message from {sender}: {message}")
+            self.message_event.publish(sender, 'private', message)
 
     def handle_join(self, response):
         """
