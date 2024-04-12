@@ -1,5 +1,3 @@
-# Makefile for managing common tasks in a Python project
-
 # Variables
 PYTHON=python3
 PYTEST=pytest tests/

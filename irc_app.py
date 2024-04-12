@@ -299,5 +299,5 @@ if __name__ == "__main__":
         loop.run()
     else:
         # If connection to the server fails, print an error message.
-        print("Unable to connect to server")
+        logger.error("Unable to connect to server")
 
