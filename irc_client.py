@@ -147,6 +147,8 @@ class IRCClient:
             self.socket.sendall(f"JOIN {channel}\n".encode())
             self.channels.add(channel)  # Add to the internal set of channels
             logger.info(f"Attempted to join channel: {channel}")
+            sleep(1)  # Allow some time for the server to respond
+            self.request_user_list(channel)  # Request user list right after joining
             return True
         except Exception as e:
             logger.info(f"Failed to join channel {channel}: {e}")
