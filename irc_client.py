@@ -5,10 +5,7 @@ import threading
 from time import sleep
 from typing import Callable
 
-logging.basicConfig(filename='irc.log',
-                    level=logging.DEBUG,
-                    filemode='w',
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
 logger = logging.getLogger(__name__)
 
 

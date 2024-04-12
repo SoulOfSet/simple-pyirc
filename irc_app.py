@@ -1,4 +1,5 @@
 import argparse
+import logging
 from time import sleep
 import urwid
 from irc_client import IRCClient
@@ -268,6 +269,13 @@ def setup_ui(irc_client, default_channel):
 
 
 if __name__ == "__main__":
+
+    logging.basicConfig(filename='irc.log',
+                        level=logging.DEBUG,
+                        filemode='w',
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
+
     # Parse command-line arguments to get configuration for the IRC client.
     args = parse_arguments()
     irc_client = IRCClient(args.host, args.port, args.userinfo)
