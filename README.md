@@ -27,7 +27,7 @@ Before running the IRC client, you must install the necessary dependencies. This
 pip install -r requirements.txt
 ```
 
-## Usage
+## Running with `make`
 To start the IRC client, use the following make command:
 
 ```bash
@@ -36,7 +36,7 @@ make start-client
 
 This command will prompt you to enter the necessary details such as server host, port, userinfo, nickname, and default channel through command line arguments.
 
-## Command Line Arguments
+## Running from Python
 
 The application accepts several command line arguments to configure the IRC client:
 
@@ -49,8 +49,18 @@ The application accepts several command line arguments to configure the IRC clie
 Example:
 
 ```bash
-python main.py --host irc.example.com --port 6667 --userinfo "Python IRC Client" --nickname mynickname --default-channel #general
+python irc_app.py --host irc.example.com --port 6667 --userinfo "Python IRC Client" --nickname mynickname --default-channel #general
 ```
+
+## IRC Commands
+
+Once connected, you can interact with the IRC server and other users through various commands typed into the client:
+
+ - `/join [channel]`: Joins the specified channel if it exists. Example: `/join #help`
+ - `/switch [channel]`: Switches your current view to another channel you have joined. Example: `/switch #general`
+ - `/whisp [username] [message]`: Sends a private message to the specified user. Example: `/whisp John Hello, John!`
+
+These commands are input directly into the client's message field and processed upon pressing 'enter'. Errors or feedback are displayed within the chat interface.
 
 ## Testing
 
