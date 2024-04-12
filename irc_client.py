@@ -1,7 +1,24 @@
+import logging
 import re
 import socket
 import threading
 from time import sleep
+from typing import Callable
+
+
+logger = logging.getLogger(__name__)
+
+
+class EventPublisher:
+    def __init__(self):
+        self.subscribers = []
+
+    def subscribe(self, callback: Callable):
+        self.subscribers.append(callback)
+
+    def publish(self, *args, **kwargs):
+        for subscriber in self.subscribers:
+            subscriber(*args, **kwargs)
 
 
 class IRCClient:
@@ -20,6 +37,9 @@ class IRCClient:
         self.connected = False
         self.channels = set()
         self.channel_users = {}
+        self.message_event = EventPublisher()
+        self.user_event = EventPublisher()
+        self.names_event = EventPublisher()
 
     def connect(self) -> bool:
         """
@@ -29,12 +49,12 @@ class IRCClient:
         """
         try:
             self.socket.connect((self.host, self.port))
-            print("Connected to IRC server.")
+            logger.info("Connected to IRC server.")
             self.connected = True
             self.start_listening()
             return True
         except Exception as e:
-            print(f"Failed to connect to IRC server: {e}")
+            logger.info(f"Failed to connect to IRC server: {e}")
             return False
 
     def disconnect(self) -> bool:
@@ -46,10 +66,10 @@ class IRCClient:
         try:
             self.socket.close()
             self.connected = False
-            print("Disconnected from IRC server.")
+            logger.info("Disconnected from IRC server.")
             return True
         except Exception as e:
-            print(f"Failed to disconnect from IRC server: {e}")
+            logger.info(f"Failed to disconnect from IRC server: {e}")
             return False
 
     def send_ping(self) -> bool:
@@ -61,10 +81,10 @@ class IRCClient:
         try:
             self.socket.sendall(b"PING :ping\n")
             response = self.socket.recv(4096)
-            print(f"Received: {response}")
+            logger.info(f"Received: {response}")
             return True
         except Exception as e:
-            print(f"Failed to send PING: {e}")
+            logger.info(f"Failed to send PING: {e}")
             return False
 
     def register(self, nickname: str) -> bool:
@@ -75,7 +95,7 @@ class IRCClient:
         :return: True if the registration was successful, False otherwise.
         """
         if not self.connected:
-            print("You must connect before registering.")
+            logger.info("You must connect before registering.")
             return False
         self.nickname = nickname
         try:
@@ -84,10 +104,10 @@ class IRCClient:
             self.socket.sendall(f"USER {self.nickname} 0 * :{self.userinfo}\n".encode())
             # Wait for a response from the server
             response = self.socket.recv(4096).decode()
-            print(f"Registration response: {response}")
+            logger.info(f"Registration response: {response}")
             return True
         except Exception as e:
-            print(f"Failed to register with IRC server: {e}")
+            logger.info(f"Failed to register with IRC server: {e}")
             return False
 
     def set_nickname(self, new_nickname: str) -> bool:
@@ -103,14 +123,14 @@ class IRCClient:
             # Wait for a response from the server
             response = self.socket.recv(4096).decode()
             if "Nickname is already in use" in response:
-                print("Nickname collision, please choose another.")
+                logger.info("Nickname collision, please choose another.")
                 return False
             else:
                 self.nickname = new_nickname
-                print(f"Nickname updated to {new_nickname}")
+                logger.info(f"Nickname updated to {new_nickname}")
                 return True
         except Exception as e:
-            print(f"Failed to update nickname: {e}")
+            logger.info(f"Failed to update nickname: {e}")
             return False
 
     def join_channel(self, channel: str) -> bool:
@@ -121,15 +141,15 @@ class IRCClient:
         :return: True if the channel join attempt was made, False otherwise.
         """
         if not self.connected:
-            print("You must be connected to join a channel.")
+            logger.info("You must be connected to join a channel.")
             return False
         try:
             self.socket.sendall(f"JOIN {channel}\n".encode())
             self.channels.add(channel)  # Add to the internal set of channels
-            print(f"Attempted to join channel: {channel}")
+            logger.info(f"Attempted to join channel: {channel}")
             return True
         except Exception as e:
-            print(f"Failed to join channel {channel}: {e}")
+            logger.info(f"Failed to join channel {channel}: {e}")
             return False
 
     def leave_channel(self, channel: str) -> bool:
@@ -140,15 +160,15 @@ class IRCClient:
         :return: True if the channel leave attempt was made, False otherwise.
         """
         if not self.connected:
-            print("You must be connected to leave a channel.")
+            logger.info("You must be connected to leave a channel.")
             return False
         try:
             self.socket.sendall(f"PART {channel}\n".encode())
             self.channels.discard(channel)  # Remove from the internal set of channels
-            print(f"Attempted to leave channel: {channel}")
+            logger.info(f"Attempted to leave channel: {channel}")
             return True
         except Exception as e:
-            print(f"Failed to leave channel {channel}: {e}")
+            logger.info(f"Failed to leave channel {channel}: {e}")
             return False
 
     def start_listening(self):
@@ -167,10 +187,10 @@ class IRCClient:
             try:
                 response = self.socket.recv(4096).decode('utf-8', 'ignore').strip()
                 if response:
-                    print(f"Server says: {response}")
+                    logger.info(f"Server says: {response}")
                     self.handle_server_response(response)
             except Exception as e:
-                print(f"Error listening to server: {e}")
+                logger.info(f"Error listening to server: {e}")
                 self.connected = False
                 raise e
 
@@ -196,63 +216,83 @@ class IRCClient:
         """
         Handles a PRIVMSG (Private Message) from the server. This method extracts the sender's nickname,
         the target (which can be a channel or a user), and the message content, then prints the message.
-
-        The PRIVMSG command is used in IRC to send private messages between users or to send messages to channels.
+        It differentiates between messages sent to a channel and private messages to the user.
 
         :param response: The raw response string from the server containing the PRIVMSG command.
         """
         sender = re.search(r":(\S+)!", response).group(1)
         channel_or_user = re.search(r"PRIVMSG (\S+)", response).group(1)
         message = re.search(r"PRIVMSG \S+ :(.+)", response).group(1)
-        print(f"Message from {sender} in {channel_or_user}: {message}")
+        if channel_or_user.startswith('#'):
+            logger.info(f"Message from {sender} in {channel_or_user}: {message}")
+            self.message_event.publish(sender, channel_or_user, message)
+        else:
+            logger.info(f"Private message from {sender}: {message}")
+            self.message_event.publish(sender, 'private', message)
 
     def handle_join(self, response):
         """
         Handles a JOIN message from the server. This method extracts the user who joined and the channel
-        they joined, then updates the internal mapping of users to channels and prints a message indicating
-        the user has joined the channel.
-
-        The JOIN command is used in IRC for a user to start listening to the traffic from a specified channel.
+        they joined, updates the internal mapping of channel users, and publishes the join event.
 
         :param response: The raw response string from the server containing the JOIN command.
         """
         user = re.search(r":(\S+)!", response).group(1)
-        channel = re.search(r"JOIN (\S+)", response).group(1)
-        if user not in self.channel_users:
-            self.channel_users[user] = set()
-        self.channel_users[user].add(channel)
-        print(f"{user} has joined {channel}")
+        channel = re.search(r"JOIN (\S+)", response).group(1).replace(":", "")
+        if channel not in self.channel_users:
+            self.channel_users[channel] = set()
+        self.channel_users[channel].add(user)
+        logger.info(f"{user} has joined {channel}")
+        self.user_event.publish(user, channel, "joined")
 
     def handle_part(self, response):
         """
         Handles a PART message from the server. This method extracts the user who left and the channel
-        they left, then updates the internal mapping of users to channels and prints a message indicating
-        the user has left the channel.
-
-        The PART command is used in IRC for a user to leave a channel.
+        they left, updates the internal mapping of channel users, and publishes the part event.
 
         :param response: The raw response string from the server containing the PART command.
         """
         user = re.search(r":(\S+)!", response).group(1)
         channel = re.search(r"PART (\S+)", response).group(1)
-        if user in self.channel_users and channel in self.channel_users[user]:
-            self.channel_users[user].remove(channel)
-        print(f"{user} has left {channel}")
+        if channel in self.channel_users and user in self.channel_users[channel]:
+            self.channel_users[channel].remove(user)
+        logger.info(f"{user} has left {channel}")
+        self.user_event.publish(user, channel, "left")
 
     def handle_names(self, response):
         """
         Handles the NAMES response from the server. This method extracts the channel name and the list of
-        nicknames in that channel, then updates the internal mapping of channels to users and prints the
-        list of users in the channel.
-
-        The NAMES command is used in IRC to list all visible nicknames that are part of a specified channel.
+        nicknames in that channel, then updates the internal mapping of channels to users.
 
         :param response: The raw response string from the server containing the NAMES list.
         """
-        channel = re.search(r"= (\S+)", response).group(1)
-        names = re.search(r":(.+)", response.split(":")[-1]).group(1).split()
-        self.channel_users[channel] = set(names)
-        print(f"Users in {channel}: {', '.join(names)}")
+        if '353' in response and '366' in response:
+            # Find the start and end of the relevant part of the response
+            start_index = response.find('353')
+            end_index = response.find('366', start_index)
+
+            # Extract the part of the response that contains the names list
+            names_part = response[start_index:end_index]
+
+            # Extract the channel name and names list
+            parts = names_part.split()
+            channel_index = parts.index('353') + 3  # The channel name follows the '353' marker by 4 positions
+            channel = parts[channel_index]
+
+            # Extract names; they are after the channel name, delimited by ':'
+            names_start_index = names_part.find(':', names_part.find(channel)) + 1
+            names_end_index = names_part.find(':', names_start_index)
+            names = names_part[names_start_index:names_end_index].split()
+
+            if channel not in self.channel_users:
+                self.channel_users[channel] = set()
+
+            # Update the entire set to match the NAMES response
+            self.channel_users[channel] = set(names)
+
+            logger.info(f"Updated user list for {channel}: {', '.join(names)}")
+            # Publish names event to update UI components
+            self.names_event.publish(channel, names)
 
     def send_message(self, target, message):
         """
